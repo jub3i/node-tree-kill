@@ -1,32 +1,40 @@
 var childProcess = require('child_process');
 var spawn = childProcess.spawn;
 var exec = childProcess.exec;
-var once = require('once');
 var isWindows = process.platform === 'win32';
 
 module.exports = function (pid, signal, callback) {
-    if (isWindows) {
-        exec('taskkill /pid ' + pid + ' /T /F', callback);
-    } else {
-        var tree = {};
-        tree[pid] = [];
-        var pidsToProcess = {};
-        pidsToProcess[pid] = 1;
-        buildProcessTree(pid, tree, pidsToProcess, function () {
-            try {
-                killAll(tree, signal);
-            }
-            catch (err) {
-                if (callback) {
-                    return callback(err);
-                } else {
-                    throw err;
+    pid = parseInt(pid, 10);
+    if (pid > 0) {
+        if (isWindows) {
+            exec('taskkill /pid ' + pid + ' /T /F', callback);
+        } else {
+            var tree = {};
+            tree[pid] = [];
+            var pidsToProcess = {};
+            pidsToProcess[pid] = 1;
+            buildProcessTree(pid, tree, pidsToProcess, function () {
+                try {
+                    killAll(tree, signal);
                 }
-            }
-            if (callback) {
-                return callback();
-            }
-        });
+                catch (err) {
+                    if (callback) {
+                        return callback(err);
+                    } else {
+                        throw err;
+                    }
+                }
+                if (callback) {
+                    return callback();
+                }
+            });
+        }
+    } else {
+        if (callback) {
+            return callback('pid must be positive integer');
+        } else {
+            return;
+        }
     }
 }
 
@@ -51,6 +59,7 @@ function killPid(pid, signal) {
         process.kill(pid, signal);
     }
     catch (err) {
+        //NOTE: ESRCH code means 'No such process'
         if (err.code !== 'ESRCH') throw err;
     }
 }
@@ -63,10 +72,10 @@ function buildProcessTree (parentPid, tree, pidsToProcess, cb) {
         allData += data;
     });
 
-    var onExitClose = once(function (code) {
+    var onStdoutClose = function (code) {
         delete pidsToProcess[parentPid];
 
-        if (code != 0) {
+        if (allData === '') {
             // no more parent processes
             if (Object.keys(pidsToProcess).length == 0) {
                 cb();
@@ -93,8 +102,7 @@ function buildProcessTree (parentPid, tree, pidsToProcess, cb) {
             pidsToProcess[pid] = 1;
             buildProcessTree(pid, tree, pidsToProcess, cb);
         });
-    });
+    };
 
-    ps.on('exit', onExitClose);
-    ps.on('close', onExitClose);
+    ps.stdout.on('close', onStdoutClose);
 }

@@ -72,7 +72,7 @@ function buildProcessTree (parentPid, tree, pidsToProcess, cb) {
         allData += data;
     });
 
-    var onStdoutClose = function (code) {
+    var onStdoutClose = function () {
         delete pidsToProcess[parentPid];
 
         if (allData === '') {
